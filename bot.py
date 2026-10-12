@@ -19,6 +19,7 @@ and only this Python bot answers.
 
 import asyncio
 import json
+import logging
 import os
 import sys
 import time
@@ -27,6 +28,7 @@ from aiogram import Bot, Dispatcher, F
 from aiogram.filters import Command
 from aiogram.types import (
     CallbackQuery,
+    ErrorEvent,
     InlineKeyboardButton,
     InlineKeyboardMarkup,
     KeyboardButton,
@@ -34,6 +36,9 @@ from aiogram.types import (
     ReplyKeyboardMarkup,
     Update,
 )
+
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger("ksm-pos-bot")
 
 from store import (
     CATEGORY_PAGE_SIZE,
@@ -64,6 +69,35 @@ ADMIN_IDS = [x.strip() for x in os.environ.get("ADMIN_IDS", "").split(",") if x.
 store = Store(APPS_SCRIPT_URL, BRIDGE_SECRET)
 bot = Bot(token=TOKEN)
 dp = Dispatcher()
+
+
+@dp.errors()
+async def on_handler_error(event: ErrorEvent):
+    """Catch-all: never leave the user staring at silence.
+
+    Replies with the actual error (truncated) so a screenshot of the
+    bot's reply is enough to diagnose bridge/sheet problems.
+    """
+    exc = event.exception
+    logger.exception("Unhandled handler error: %r", exc)
+    detail = str(exc)[:180] if exc else "unknown error"
+    try:
+        update = event.update
+        message = getattr(update, "message", None)
+        if message is not None:
+            await message.answer(
+                "Sorry, something went wrong. Please try again.\n\n"
+                f"Error: {detail}"
+            )
+            return
+        callback = getattr(update, "callback_query", None)
+        if callback is not None:
+            try:
+                await callback.answer(f"Error: {detail}"[:190], show_alert=True)
+            except Exception:
+                pass
+    except Exception:
+        pass
 
 # update_id -> expires_at (drop Telegram retries of the same update)
 _seen_updates = {}
