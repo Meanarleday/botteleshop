@@ -1,0 +1,36 @@
+Code.gs doPost(e) patch — add the tgBridge branch
+====================================================
+
+You already have the V7 doPost. Add the block below INSIDE doPost(e),
+right AFTER the Telegram webhook block and BEFORE the
+"// Existing GitHub POS API." line.
+
+Find this in your Code.gs:
+
+    // Existing GitHub POS API.
+    const action = request ? request.action : null;
+
+And insert the new block directly above it, so it looks like this:
+
+    // Telegram sheet bridge for the Python POS bot.
+    // Lets the Python bot read/write your Google Sheet through this
+    // /exec URL. Protected by TG_BRIDGE_SECRET (Script Properties).
+    if (request && request.action === 'tgBridge') {
+      try {
+        var bridgeOut = tgBridge_(request.payload || {});
+        return ContentService.createTextOutput(JSON.stringify({
+          success: true,
+          data: bridgeOut
+        })).setMimeType(ContentService.MimeType.JSON);
+      } catch (bridgeErr) {
+        return ContentService.createTextOutput(JSON.stringify({
+          success: false,
+          error: String((bridgeErr && bridgeErr.message) || bridgeErr)
+        })).setMimeType(ContentService.MimeType.JSON);
+      }
+    }
+
+    // Existing GitHub POS API.
+    const action = request ? request.action : null;
+
+Then: save, Deploy > Manage deployments > Edit > New version > Deploy.
