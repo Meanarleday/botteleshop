@@ -12,6 +12,12 @@ import httpx
 
 _REDIRECTS = {301, 302, 303, 307, 308}
 
+_LOGIN_HINT = (
+    "Apps Script web app asks for Google sign-in. In Apps Script: "
+    "Deploy > Manage deployments > edit the Web App > "
+    "'Who has access' must be 'Anyone' > New version > Deploy."
+)
+
 
 class BridgeError(RuntimeError):
     pass
@@ -50,11 +56,22 @@ class Bridge:
         r = self._client.post(url, json=payload)
         if follow and r.status_code in _REDIRECTS and r.headers.get("location"):
             loc = r.headers["location"]
+            if "accounts.google.com" in loc:
+                raise BridgeError(_LOGIN_HINT)
             r = self._client.post(loc, json=payload)
-            if r.status_code not in _REDIRECTS:
-                self._final_url = loc
+            if r.status_code == 200:
+                # Cache the echo URL only when it actually answered with JSON.
+                # Never cache an error page (e.g. a login redirect target).
+                try:
+                    r.json()
+                except Exception:
+                    pass
+                else:
+                    self._final_url = loc
         if r.status_code in _REDIRECTS:
             raise BridgeError("redirect loop talking to Apps Script")
+        if "accounts.google.com" in str(getattr(r, "url", "")):
+            raise BridgeError(_LOGIN_HINT)
         try:
             data = r.json()
         except Exception:
